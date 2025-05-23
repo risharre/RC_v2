@@ -19,8 +19,15 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
-// Initialize bot
-const bot = new Telegraf(BOT_TOKEN);
+// Initialize bot with polling settings
+const bot = new Telegraf(BOT_TOKEN, {
+  polling: {
+    timeout: 30,  // Long polling timeout in seconds
+    limit: 100,    // Limit of updates to fetch
+    allowedUpdates: ['message', 'callback_query', 'inline_query'], // Filter updates
+    retryAfter: 5000 // Retry after 5 seconds on error
+  }
+});
 
 // Set up commands
 setupStartCommand(bot);
@@ -37,12 +44,25 @@ cron.schedule('0 */3 * * *', async () => {
     log(`Scheduled matching completed. Created ${matches.length} pairs.`);
     
     if (matches.length > 0) {
-      await notifyUsers(bot, matches);
+      await notifyUsers(bot.telegram, matches);
     }
   } catch (err) {
     error('Error in scheduled matching', err);
   }
 });
+
+// Add ping to keep connection alive
+setInterval(() => {
+  try {
+    bot.telegram.getMe().catch(e => {
+      error('Failed to ping Telegram API', e);
+      // If we couldn't connect, try to restart polling
+      bot.stop().then(() => bot.launch());
+    });
+  } catch (err) {
+    error('Error in keep-alive ping', err);
+  }
+}, 5 * 60 * 1000); // Every 5 minutes
 
 // Handle errors
 bot.catch((err, ctx) => {
